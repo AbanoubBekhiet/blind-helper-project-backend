@@ -1,12 +1,16 @@
 from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import JSONResponse
 from ultralytics import YOLO
-import torch, cv2, numpy as np
+import torch
+import numpy as np
+import cv2
 from fastapi.middleware.cors import CORSMiddleware
 
+# ---------------------------
+# App & CORS setup
+# ---------------------------
 app = FastAPI()
 
-# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,18 +19,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load YOLO
-yolo = YOLO("models/yolov8m.pt")
+# ---------------------------
+# Load YOLO model
+# ---------------------------
+yolo = YOLO("models/yolov8m.pt")  # Ensure this file is in models/
 
-# Load MiDaS
+# ---------------------------
+# Load MiDaS model
+# ---------------------------
 midas = torch.hub.load("intel-isl/MiDaS", "MiDaS_small")
 midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms")
 transform = midas_transforms.small_transform
 
-
-def classify_distance(pixel_height, avg_depth):
+# ---------------------------
+# Distance classifier
+# ---------------------------
+def classify_distance(pixel_height: float, avg_depth: float) -> str:
     score = pixel_height * avg_depth
-
     if score > 200:
         return "قريب جدًا"
     elif score > 150:
@@ -36,18 +45,25 @@ def classify_distance(pixel_height, avg_depth):
     else:
         return "بعيد جدًا"
 
-
+# ---------------------------
+# Detection endpoint
+# ---------------------------
 @app.post("/detect")
 async def detect(file: UploadFile = File(...)):
+    # Read image
     contents = await file.read()
     npimg = np.frombuffer(contents, np.uint8)
     frame = cv2.imdecode(npimg, cv2.IMREAD_COLOR)
 
-    # YOLO detection
+    # ---------------------------
+    # YOLO Detection
+    # ---------------------------
     results = yolo(frame)
-    detections = results[0].boxes.data.tolist()
+    detections = results[0].boxes.data.tolist() if results[0].boxes.data is not None else []
 
-    # Depth (MiDaS)
+    # ---------------------------
+    # MiDaS Depth Estimation
+    # ---------------------------
     input_batch = transform(frame).to("cpu")
     with torch.no_grad():
         prediction = midas(input_batch)
@@ -55,9 +71,12 @@ async def detect(file: UploadFile = File(...)):
         prediction.unsqueeze(1),
         size=frame.shape[:2],
         mode="bicubic",
-        align_corners=False,
+        align_corners=False
     ).squeeze().cpu().numpy()
 
+    # ---------------------------
+    # Collect object info
+    # ---------------------------
     objects_info = []
     description_texts = []
 
@@ -74,7 +93,6 @@ async def detect(file: UploadFile = File(...)):
             "distance_label": distance_label,
             "bbox": [int(x1), int(y1), int(x2), int(y2)]
         })
-
         description_texts.append(f"{label} {distance_label}")
 
     return JSONResponse({

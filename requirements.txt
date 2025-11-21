@@ -12,3 +12,4 @@ numpy
 timm
 requests
 six
+python-multipart

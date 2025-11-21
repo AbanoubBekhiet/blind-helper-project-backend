@@ -22,12 +22,13 @@ app.add_middleware(
 # ---------------------------
 # Load YOLO model
 # ---------------------------
-yolo = YOLO("models/yolov8m.pt")  # Ensure this file is in models/
+yolo = YOLO("models/yolov8m.pt")  # place your weights here
 
 # ---------------------------
-# Load MiDaS model
+# Load MiDaS model via torch.hub
 # ---------------------------
 midas = torch.hub.load("intel-isl/MiDaS", "MiDaS_small")
+midas.eval()
 midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms")
 transform = midas_transforms.small_transform
 

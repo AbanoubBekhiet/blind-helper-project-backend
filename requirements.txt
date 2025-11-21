@@ -1,8 +1,14 @@
 fastapi
 uvicorn[standard]
+
+torch==2.3.1+cpu
+torchvision==0.18.1+cpu
+torchaudio==2.3.1+cpu
+--extra-index-url https://download.pytorch.org/whl/cpu
+
 ultralytics
-torch --index-url https://download.pytorch.org/whl/cpu
-torchvision --index-url https://download.pytorch.org/whl/cpu
-opencv-python-headless
-gtts
+opencv-python
 numpy
+timm
+requests
+six

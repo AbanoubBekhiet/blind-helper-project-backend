@@ -5,6 +5,8 @@ import torch
 import numpy as np
 import cv2
 from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
+import os
 
 # ---------------------------
 # App & CORS setup
@@ -100,3 +102,10 @@ async def detect(file: UploadFile = File(...)):
         "objects": objects_info,
         "text": ", ".join(description_texts) if description_texts else ""
     })
+
+
+
+if __name__ == "__main__":
+
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)

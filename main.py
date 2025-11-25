@@ -9,47 +9,26 @@ import uvicorn
 import os
 
 # ---------------------------
-# App & CORS setup
+# App & CORS
 # ---------------------------
-app = FastAPI()
-
+app = FastAPI(title="YOLOE Object Detection API")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ---------------------------
-# Load YOLO model
+# Load YOLOE model
 # ---------------------------
-yolo = YOLO("models/yolov8m.pt")  # place your weights here
+yolo = YOLO("models/yoloe-v8l-seg-pf.pt")  
+device = "cuda" if torch.cuda.is_available() else "cpu"
+yolo.to(device)
 
 # ---------------------------
-# Load MiDaS model via torch.hub
-# ---------------------------
-midas = torch.hub.load("intel-isl/MiDaS", "MiDaS_small")
-midas.eval()
-midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms")
-transform = midas_transforms.small_transform
-
-# ---------------------------
-# Distance classifier
-# ---------------------------
-def classify_distance(pixel_height: float, avg_depth: float) -> str:
-    score = pixel_height * avg_depth
-    if score > 200:
-        return "قريب جدًا"
-    elif score > 150:
-        return "قريب"
-    elif score > 100:
-        return "بعيد"
-    else:
-        return "بعيد جدًا"
-
-# ---------------------------
-# Detection endpoint
+# Detection endpoint using YOLOE predict()
 # ---------------------------
 @app.post("/detect")
 async def detect(file: UploadFile = File(...)):
@@ -57,55 +36,53 @@ async def detect(file: UploadFile = File(...)):
     contents = await file.read()
     npimg = np.frombuffer(contents, np.uint8)
     frame = cv2.imdecode(npimg, cv2.IMREAD_COLOR)
+    if frame is None:
+        return JSONResponse({"error": "Invalid image"}, status_code=400)
+
+    # Convert BGR -> RGB
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
     # ---------------------------
-    # YOLO Detection
+    # YOLOE Prediction
     # ---------------------------
-    results = yolo(frame)
-    detections = results[0].boxes.data.tolist() if results[0].boxes.data is not None else []
+    results = yolo.predict(
+        source=frame_rgb,
+        conf=0.1,
+        iou=0.5,
+        device=device,
+        verbose=False
+    )
 
-    # ---------------------------
-    # MiDaS Depth Estimation
-    # ---------------------------
-    input_batch = transform(frame).to("cpu")
-    with torch.no_grad():
-        prediction = midas(input_batch)
-    depth_map = torch.nn.functional.interpolate(
-        prediction.unsqueeze(1),
-        size=frame.shape[:2],
-        mode="bicubic",
-        align_corners=False
-    ).squeeze().cpu().numpy()
-
-    # ---------------------------
-    # Collect object info
-    # ---------------------------
+    # Extract detections
     objects_info = []
     description_texts = []
 
-    for det in detections:
-        x1, y1, x2, y2, conf, cls = det
-        label = yolo.model.names[int(cls)]
-        pixel_height = y2 - y1
-        avg_depth = np.median(depth_map[int(y1):int(y2), int(x1):int(x2)])
-        distance_label = classify_distance(pixel_height, avg_depth)
+    if results and len(results) > 0:
+        result = results[0]
+        if result.boxes is not None:
+            boxes = result.boxes.xyxy.cpu().numpy()
+            scores = result.boxes.conf.cpu().numpy()
+            classes = result.boxes.cls.cpu().numpy()
+            for i in range(len(boxes)):
+                x1, y1, x2, y2 = boxes[i]
+                conf = float(round(scores[i], 2))
+                cls = int(classes[i])
+                label = yolo.model.names[cls]
 
-        objects_info.append({
-            "label": label,
-            "confidence": float(round(conf, 2)),
-            "distance_label": distance_label,
-            "bbox": [int(x1), int(y1), int(x2), int(y2)]
-        })
-        description_texts.append(f"{label} {distance_label}")
+                objects_info.append({
+                    "label": label,
+                    "confidence": conf,
+                    "bbox": [int(x1), int(y1), int(x2), int(y2)]
+                })
+                description_texts.append(label)
 
     return JSONResponse({
         "objects": objects_info,
-        "text": ", ".join(description_texts) if description_texts else ""
+        "text": ", ".join(description_texts) if description_texts else "لا توجد أشياء مكتشفة",
+        "yolo_benefits": "YOLOE provides fast real-time object detection with proper confidence and NMS handling."
     })
 
 
-
 if __name__ == "__main__":
-
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port)

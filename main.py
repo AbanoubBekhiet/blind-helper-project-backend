@@ -9,26 +9,25 @@ import uvicorn
 import os
 
 # ---------------------------
-# App & CORS
+# App & CORS setup
 # ---------------------------
-app = FastAPI(title="YOLOE Object Detection API")
+app = FastAPI()
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ---------------------------
-# Load YOLOE model
+# Load YOLO model
 # ---------------------------
-yolo = YOLO("models/yoloe-v8l-seg-pf.pt")  
-device = "cuda" if torch.cuda.is_available() else "cpu"
-yolo.to(device)
+yolo = YOLO("models/yoloe-v8l-seg-pf.pt")
 
 # ---------------------------
-# Detection endpoint using YOLOE predict()
+# Detection endpoint (WITHOUT distance)
 # ---------------------------
 @app.post("/detect")
 async def detect(file: UploadFile = File(...)):
@@ -36,50 +35,34 @@ async def detect(file: UploadFile = File(...)):
     contents = await file.read()
     npimg = np.frombuffer(contents, np.uint8)
     frame = cv2.imdecode(npimg, cv2.IMREAD_COLOR)
+
     if frame is None:
         return JSONResponse({"error": "Invalid image"}, status_code=400)
 
-    # Convert BGR -> RGB
-    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
     # ---------------------------
-    # YOLOE Prediction
+    # YOLO Detection ONLY
     # ---------------------------
-    results = yolo.predict(
-        source=frame_rgb,
-        conf=0.1,
-        iou=0.5,
-        device=device,
-        verbose=False
-    )
+    results = yolo(frame)
+    detections = results[0].boxes.data.tolist() if results[0].boxes.data is not None else []
 
-    # Extract detections
     objects_info = []
     description_texts = []
 
-    if results and len(results) > 0:
-        result = results[0]
-        if result.boxes is not None:
-            boxes = result.boxes.xyxy.cpu().numpy()
-            scores = result.boxes.conf.cpu().numpy()
-            classes = result.boxes.cls.cpu().numpy()
-            for i in range(len(boxes)):
-                x1, y1, x2, y2 = boxes[i]
-                conf = float(round(scores[i], 2))
-                cls = int(classes[i])
-                label = yolo.model.names[cls]
+    for det in detections:
+        x1, y1, x2, y2, conf, cls = det
+        label = yolo.model.names[int(cls)]
 
-                objects_info.append({
-                    "label": label,
-                    "confidence": conf,
-                    "bbox": [int(x1), int(y1), int(x2), int(y2)]
-                })
-                description_texts.append(label)
+        objects_info.append({
+            "label": label,
+            "confidence": float(round(conf, 2)),
+            "bbox": [int(x1), int(y1), int(x2), int(y2)]
+        })
+
+        description_texts.append(label)
 
     return JSONResponse({
         "objects": objects_info,
-        "text": ", ".join(description_texts) if description_texts else "لا توجد أشياء مكتشفة",
-        "yolo_benefits": "YOLOE provides fast real-time object detection with proper confidence and NMS handling."
+        "text": ", ".join(description_texts) if description_texts else "لا توجد أشياء مكتشفة"
     })
 
 

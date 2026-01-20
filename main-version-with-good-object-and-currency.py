@@ -7,12 +7,8 @@ import cv2
 import uvicorn
 import os
 from collections import Counter
-import easyocr
-from PIL import Image
-import io
 
 
-reader = easyocr.Reader(['ar', 'en'], gpu=False)  # set gpu=True if you have a GPU
 
 # ---------------------------
 # Arabic Translation (Argos Translate)
@@ -138,40 +134,6 @@ async def detect_currency(file: UploadFile = File(...)):
         "currencies": objects_info
     })
 
-
-
-@app.post("/extract-text")
-async def extract_text(file: UploadFile = File(...)):
-    try:
-        # Read image
-        image_bytes = await file.read()
-        image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
-        image_np = np.array(image)
-
-        # Preprocess image: grayscale + threshold
-        gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
-        _, processed = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-        # Perform OCR
-        results = reader.readtext(processed)
-
-        # Filter by confidence and sort by vertical position (y), then horizontal (x)
-        results_filtered = [r for r in results if r[2] > 0.3]
-        results_sorted = sorted(results_filtered, key=lambda r: (r[0][0][1], r[0][0][0]))
-
-        # Group text by approximate lines
-        lines_dict = {}
-        for res in results_sorted:
-            y = int(res[0][0][1] // 10)  # bucket by y-coordinate
-            lines_dict.setdefault(y, []).append(res[1])
-
-        text_lines = [" ".join(line) for line in lines_dict.values()]
-        final_text = "\n".join(text_lines)
-
-        return JSONResponse(content={"text": final_text})
-
-    except Exception as e:
-        return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
 

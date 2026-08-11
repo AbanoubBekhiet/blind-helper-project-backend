@@ -1,0 +1,50 @@
+# === Python ===
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+
+# Environment variables
+.env
+
+# Virtual environment
+venv/
+venv311/
+.env/
+.env.bak/
+.venv/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+
+# IDE / Editor settings
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# === FastAPI or model cache ===
+*.pth
+*.onnx
+*.h5
+*.ckpt
+*.pickle
+*.pkl
+*.pt
+# Temporary audio or output files
+back-end/*.mp3
+back-end/*.wav
+back-end/__pycache__/
+back-end/temp/
+back-end/tmp/
+back-end/uploads/
+
+# === Node or Frontend ===
+node_modules/
+dist/
+build/

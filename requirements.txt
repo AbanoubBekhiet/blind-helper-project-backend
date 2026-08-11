@@ -11,3 +11,4 @@ requests
 six
 python-multipart
 argostranslate
+python-dotenv
